@@ -1,52 +1,66 @@
-from PIL import Image
+import os
 import streamlit as st
+from PIL import Image
 import google.generativeai as genai
-
 from configs import SYSTEM_PROMPT, SAFETY_SETTINGS, GENERATION_CONFIG, MODEL_NAME
 
+# Load API Key Securely
+genai.configure(api_key=["AIzaSyDvi36_drsfozMYLeL5RsGcA6ILybMY6vs"])  # Store API key in Streamlit secrets
 
-if __name__ == '__main__':
-    # Configure Model
-    genai.configure(api_key="AIzaSyDvi36_drsfozMYLeL5RsGcA6ILybMY6vs")  # Check https://github.com/google-gemini/cookbook
-    model = genai.GenerativeModel(
-        model_name=MODEL_NAME,
-        safety_settings=SAFETY_SETTINGS,
-        generation_config=GENERATION_CONFIG,
-        system_instruction=SYSTEM_PROMPT
-    )
+# Load Model
+model = genai.GenerativeModel(
+    model_name=MODEL_NAME,
+    safety_settings=SAFETY_SETTINGS,
+    generation_config=GENERATION_CONFIG,
+    system_instruction=SYSTEM_PROMPT
+)
 
-    # Setup Page
-    # Head
-    st.set_page_config(page_title='Axe Analytics')
-    st.title('Axe Analytics')
-    st.subheader('Analyzing medical images using AI (Gemini).')
+# Streamlit UI
+st.set_page_config(page_title='Axe Analytics')
+st.title('Axe Analytics')
+st.subheader('Analyzing medical images using AI (Gemini).')
 
-    # Body
-    col1, col2 = st.columns([1, 5])
-    submit_btn = col1.button('ANALYZE', use_container_width=True)
-    uploaded_file = col2.file_uploader('Upload X-Ray Image:', type=['png', 'jpg', 'jpeg'], accept_multiple_files=False)
-    col3, col4 = st.columns(2)
-    if uploaded_file:
-        image_data = Image.open(uploaded_file)
-        col3.image(image_data, use_column_width=True)  # Display Image
-        message = col4.chat_message("Model:")
+# File Upload Section
+st.markdown("### Upload Medical Images (X-Ray or MRI)")
+col1, col2 = st.columns([1, 5])
+xray_file = col2.file_uploader('Upload X-Ray Image:', type=['png', 'jpg', 'jpeg'])
+mri_file = col2.file_uploader('Upload MRI Scan:', type=['png', 'jpg', 'jpeg'])
 
-    if submit_btn:
-        # Analyze uploaded image
-        history = st.session_state['history'] if 'history' in st.session_state else []
+# Display Uploaded Images
+if xray_file:
+    st.image(Image.open(xray_file), caption="X-Ray Image", use_column_width=True)
+if mri_file:
+    st.image(Image.open(mri_file), caption="MRI Scan", use_column_width=True)
 
-        content = [
-            "Analyze this image.",
-            image_data
-        ]
+# Additional Health Info
+st.markdown("### (Optional) Provide Additional Health Information")
+user_health_info = st.text_area("Describe any symptoms or concerns related to the images:", "")
 
-        history.append({
-            "role": "user",
-            "parts": content,
-        })
+# Initialize chat history
+if "history" not in st.session_state:
+    st.session_state.history = []
 
-        chat_session = model.start_chat()
+# Analyze Button
+if (xray_file or mri_file) and col1.button('ANALYZE', use_container_width=True):
+    with st.spinner("Analyzing..."):
+        chat_session = model.start_chat(history=st.session_state.history)
+
+        # Prepare AI Prompt
+        content = ["Analyze the uploaded medical images."]
+        if xray_file:
+            content.append("This is an X-ray image.")
+            content.append(Image.open(xray_file))
+        if mri_file:
+            content.append("This is an MRI scan.")
+            content.append(Image.open(mri_file))
+        if user_health_info:
+            content.append(f"Additional health information provided by the user: {user_health_info}")
+
+        # AI Analysis
         response = chat_session.send_message(content)
-        message.write(response.text)
 
-        st.session_state['history'] = chat_session.history
+        # Display response
+        st.chat_message("Model:").write(response.text)
+
+        # Update chat history
+        st.session_state.history = chat_session.history
